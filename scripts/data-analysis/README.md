@@ -49,35 +49,35 @@ python openclaw_loader.py --dir /path/to/.openclaw
 
 ## Data Sources
 
-| Source | Path | Description |
-|--------|------|-------------|
-| Cron run logs | `~/.openclaw/cron/runs/*.jsonl` | Job execution telemetry |
-| Session transcripts | `~/.openclaw/sessions/*.jsonl` | Agent conversation logs |
+| Source              | Path                            | Description             |
+| ------------------- | ------------------------------- | ----------------------- |
+| Cron run logs       | `~/.openclaw/cron/runs/*.jsonl` | Job execution telemetry |
+| Session transcripts | `~/.openclaw/sessions/*.jsonl`  | Agent conversation logs |
 
 ## DataFrame Schemas
 
 ### `load_cron_runs()` columns
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `timestamp` | datetime | UTC execution time |
-| `job_id` | str | Cron job identifier |
-| `status` | category | ok / error / skipped |
-| `duration_ms` | float | Execution time in ms |
-| `model` | str | AI model used |
-| `provider` | str | API provider |
-| `input_tokens` | float | Input token count |
-| `output_tokens` | float | Output token count |
+| Column            | Type     | Description                               |
+| ----------------- | -------- | ----------------------------------------- |
+| `timestamp`       | datetime | UTC execution time                        |
+| `job_id`          | str      | Cron job identifier                       |
+| `status`          | category | ok / error / skipped                      |
+| `duration_ms`     | float    | Execution time in ms                      |
+| `model`           | str      | AI model used                             |
+| `provider`        | str      | API provider                              |
+| `input_tokens`    | float    | Input token count                         |
+| `output_tokens`   | float    | Output token count                        |
 | `delivery_status` | category | delivered / not-delivered / not-requested |
 
 ### `load_session_transcript()` columns
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `timestamp` | datetime | Message time |
-| `role` | str | user / assistant |
-| `tokens_input` | float | Input tokens for this turn |
-| `tokens_output` | float | Output tokens for this turn |
-| `model` | str | Model used |
-| `tool_names` | list | Tools called in this turn |
-| `duration_ms` | float | Response latency |
+| Column          | Type     | Description                 |
+| --------------- | -------- | --------------------------- |
+| `timestamp`     | datetime | Message time                |
+| `role`          | str      | user / assistant            |
+| `tokens_input`  | float    | Input tokens for this turn  |
+| `tokens_output` | float    | Output tokens for this turn |
+| `model`         | str      | Model used                  |
+| `tool_names`    | list     | Tools called in this turn   |
+| `duration_ms`   | float    | Response latency            |
