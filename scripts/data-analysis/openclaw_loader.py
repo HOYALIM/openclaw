@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from glob import glob
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -39,10 +38,81 @@ DEFAULT_OPENCLAW_DIR = Path.home() / ".openclaw"
 def _resolve_openclaw_dir(base: Optional[str] = None) -> Path:
     if base:
         return Path(base)
-    env = os.environ.get("OPENCLAW_DIR")
-    if env:
-        return Path(env)
+    for env_name in ("OPENCLAW_STATE_DIR", "CLAWDBOT_STATE_DIR", "OPENCLAW_DIR"):
+        env = os.environ.get(env_name)
+        if env:
+            return Path(env)
     return DEFAULT_OPENCLAW_DIR
+
+
+def _iter_default_session_dirs(base: Path) -> List[Path]:
+    dirs: List[Path] = []
+    root_sessions = base / "sessions"
+    dirs.append(root_sessions)
+
+    agents_root = base / "agents"
+    if agents_root.exists():
+        for agent_sessions_dir in sorted(agents_root.glob("*/sessions")):
+            dirs.append(agent_sessions_dir)
+
+    return dirs
+
+
+def _session_path_candidates(base: Path, session_id: str, agent_id: Optional[str]) -> List[Path]:
+    candidates: List[Path] = []
+    seen: set[str] = set()
+
+    if agent_id:
+        targeted = base / "agents" / agent_id / "sessions" / f"{session_id}.jsonl"
+        candidates.append(targeted)
+    candidates.append(base / "sessions" / f"{session_id}.jsonl")
+
+    if not agent_id:
+        for sessions_dir in _iter_default_session_dirs(base):
+            candidates.append(sessions_dir / f"{session_id}.jsonl")
+
+    uniq: List[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(path)
+    return uniq
+
+
+def _normalize_tool_names(tools: Any) -> List[str]:
+    if not isinstance(tools, list):
+        return []
+    out: List[str] = []
+    for item in tools:
+        if isinstance(item, str):
+            out.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("name") or item.get("toolName") or item.get("tool_name")
+        if isinstance(candidate, str) and candidate:
+            out.append(candidate)
+    return out
+
+
+def _extract_content_preview(content: Any) -> str:
+    if isinstance(content, list):
+        text_parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        joined = " ".join(part for part in text_parts if part)
+        return joined[:200]
+    if isinstance(content, str):
+        return content[:200]
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, str):
+            return text[:200]
+    return str(content)[:200]
 
 
 # ---------------------------------------------------------------------------
@@ -207,11 +277,8 @@ def load_session_transcript(
     """
     base = _resolve_openclaw_dir(openclaw_dir)
 
-    # Try multiple possible locations
-    candidates = []
-    if agent_id:
-        candidates.append(base / "agents" / agent_id / "sessions" / f"{session_id}.jsonl")
-    candidates.append(base / "sessions" / f"{session_id}.jsonl")
+    # Try all known locations (agent-specific first if explicitly requested).
+    candidates = _session_path_candidates(base, session_id, agent_id)
 
     entries: List[Dict[str, Any]] = []
     for path in candidates:
@@ -224,41 +291,54 @@ def load_session_transcript(
 
     rows: List[Dict[str, Any]] = []
     for entry in entries:
-        usage = entry.get("usage") or {}
-        cost = entry.get("cost") or entry.get("costBreakdown") or {}
-        tools = entry.get("toolCalls") or entry.get("toolNames") or []
+        msg = entry.get("message") if isinstance(entry.get("message"), dict) else entry
+        if not isinstance(msg, dict):
+            continue
 
-        # Extract content preview (first 200 chars)
-        content = entry.get("content", "")
-        if isinstance(content, list):
-            # Claude-style content blocks
-            text_parts = [
-                b.get("text", "") for b in content
-                if isinstance(b, dict) and b.get("type") == "text"
-            ]
-            content = " ".join(text_parts)
-        if isinstance(content, str):
-            content_preview = content[:200]
-        else:
-            content_preview = str(content)[:200]
+        usage = msg.get("usage") or entry.get("usage") or {}
+        cost = (
+            msg.get("cost")
+            or msg.get("costBreakdown")
+            or entry.get("cost")
+            or entry.get("costBreakdown")
+            or {}
+        )
+        tools = (
+            msg.get("toolCalls")
+            or msg.get("toolNames")
+            or entry.get("toolCalls")
+            or entry.get("toolNames")
+            or []
+        )
 
-        ts = entry.get("timestamp") or entry.get("ts")
+        content_preview = _extract_content_preview(msg.get("content", ""))
+        ts = msg.get("timestamp") or entry.get("timestamp") or msg.get("ts") or entry.get("ts")
 
         row = {
             "timestamp": _ts_to_datetime(ts) if isinstance(ts, (int, float)) else None,
             "ts_epoch_ms": ts if isinstance(ts, (int, float)) else None,
-            "role": entry.get("role"),
+            "role": msg.get("role"),
             "content_preview": content_preview,
             "tokens_input": usage.get("input") or usage.get("inputTokens") or usage.get("input_tokens"),
             "tokens_output": usage.get("output") or usage.get("outputTokens") or usage.get("output_tokens"),
             "tokens_cache_read": usage.get("cacheRead") or usage.get("cache_read_input_tokens"),
             "tokens_cache_write": usage.get("cacheWrite") or usage.get("cache_creation_input_tokens"),
-            "model": entry.get("model"),
-            "provider": entry.get("provider"),
+            "model": msg.get("model") or entry.get("model"),
+            "provider": msg.get("provider") or entry.get("provider"),
             "cost_total": cost.get("total") if isinstance(cost, dict) else cost,
-            "tool_names": tools if isinstance(tools, list) else [],
-            "duration_ms": entry.get("durationMs") or entry.get("duration_ms"),
-            "stop_reason": entry.get("stopReason") or entry.get("stop_reason"),
+            "tool_names": _normalize_tool_names(tools),
+            "duration_ms": (
+                msg.get("durationMs")
+                or msg.get("duration_ms")
+                or entry.get("durationMs")
+                or entry.get("duration_ms")
+            ),
+            "stop_reason": (
+                msg.get("stopReason")
+                or msg.get("stop_reason")
+                or entry.get("stopReason")
+                or entry.get("stop_reason")
+            ),
         }
         rows.append(row)
 
@@ -311,22 +391,34 @@ def load_sessions(
     """
     base = _resolve_openclaw_dir(openclaw_dir)
 
-    search_dirs = []
+    search_dirs: List[Path] = []
     if agent_id:
         search_dirs.append(base / "agents" / agent_id / "sessions")
-    search_dirs.append(base / "sessions")
+        search_dirs.append(base / "sessions")
+    else:
+        search_dirs.extend(_iter_default_session_dirs(base))
 
     rows: List[Dict[str, Any]] = []
-    seen: set = set()
+    seen_paths: set[str] = set()
 
     for sessions_dir in search_dirs:
         if not sessions_dir.exists():
             continue
         for filepath in sessions_dir.glob("*.jsonl"):
-            sid = filepath.stem
-            if sid in seen:
+            key = str(filepath.resolve())
+            if key in seen_paths:
                 continue
-            seen.add(sid)
+            seen_paths.add(key)
+
+            sid = filepath.stem
+            resolved_parts = filepath.parts
+            detected_agent_id: Optional[str] = None
+            if "agents" in resolved_parts and "sessions" in resolved_parts:
+                try:
+                    agents_idx = resolved_parts.index("agents")
+                    detected_agent_id = resolved_parts[agents_idx + 1]
+                except (ValueError, IndexError):
+                    detected_agent_id = None
 
             stat = filepath.stat()
             # Quick line count
@@ -343,11 +435,12 @@ def load_sessions(
                 "size_bytes": stat.st_size,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
                 "line_count": line_count,
+                "agent_id": detected_agent_id,
             })
 
     if not rows:
         return pd.DataFrame(columns=[
-            "session_id", "file_path", "size_bytes", "modified_at", "line_count",
+            "session_id", "file_path", "size_bytes", "modified_at", "line_count", "agent_id",
         ])
 
     df = pd.DataFrame(rows)
