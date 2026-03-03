@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import os
+import platform
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 # Use non-interactive backend when saving to file
-if not os.environ.get("DISPLAY") and not sys.stdout.isatty():
+if platform.system() != "Darwin" and (not os.environ.get("DISPLAY") or not sys.stdout.isatty()):
     matplotlib.use("Agg")
 
 # Style

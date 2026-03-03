@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure sibling modules are importable
@@ -178,7 +178,7 @@ def cmd_cron(args: argparse.Namespace) -> int:
 
     # Filter by days
     if args.days:
-        cutoff = datetime.now(timezone.utc) - __import__("datetime").timedelta(days=args.days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
         df = df[df["timestamp"] >= cutoff]
         if df.empty:
             print(f"No runs in the last {args.days} days.")
@@ -283,18 +283,20 @@ def cmd_cron(args: argparse.Namespace) -> int:
 
 def cmd_sessions(args: argparse.Namespace) -> int:
     """List available sessions."""
-    sessions = load_sessions(openclaw_dir=args.dir, limit=args.limit or 20)
+    sessions = load_sessions(openclaw_dir=args.dir, agent_id=args.agent, limit=args.limit or 20)
 
     if sessions.empty:
         print("No sessions found.")
         return 1
 
     header(f"Sessions ({len(sessions)} found)")
-    print(f"  {'Session ID':<40} {'Size':>8} {'Lines':>6} {'Modified':<20}")
-    print(f"  {'─'*40} {'─'*8} {'─'*6} {'─'*20}")
+    print(f"  {'Session ID':<40} {'Agent':<18} {'Size':>8} {'Lines':>6} {'Modified':<20}")
+    print(f"  {'─'*40} {'─'*18} {'─'*8} {'─'*6} {'─'*20}")
     for _, row in sessions.iterrows():
+        agent = row.get("agent_id") or "default"
         print(
             f"  {row['session_id']:<40} "
+            f"{str(agent):<18} "
             f"{fmt_size(row['size_bytes']):>8} "
             f"{row['line_count']:>6} "
             f"{row['modified_at']:%Y-%m-%d %H:%M}"
@@ -306,7 +308,11 @@ def cmd_sessions(args: argparse.Namespace) -> int:
 
 def cmd_session(args: argparse.Namespace) -> int:
     """Analyze a specific session."""
-    df = load_session_transcript(args.session_id, openclaw_dir=args.dir)
+    df = load_session_transcript(
+        args.session_id,
+        openclaw_dir=args.dir,
+        agent_id=args.agent,
+    )
 
     if df.empty:
         print(f"Session '{args.session_id}' not found or empty.")
@@ -440,10 +446,12 @@ def build_parser() -> argparse.ArgumentParser:
     # sessions
     sess_p = sub.add_parser("sessions", help="List available sessions.")
     sess_p.add_argument("--limit", type=int, default=20, help="Max sessions to list.")
+    sess_p.add_argument("--agent", help="Limit session listing to a specific agent ID.")
 
     # session (single)
     s_p = sub.add_parser("session", help="Analyze a specific session.")
     s_p.add_argument("session_id", help="Session ID to analyze.")
+    s_p.add_argument("--agent", help="Agent ID to resolve session transcript under agents/<id>/sessions.")
     s_p.add_argument("-v", "--verbose", action="store_true", help="Show turn-by-turn details.")
 
     # export
