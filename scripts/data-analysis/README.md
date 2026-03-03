@@ -37,6 +37,12 @@ export_to_parquet(df, "cron_runs.parquet")
 ## CLI Usage
 
 ```bash
+# Unified analytics CLI
+./oc-analytics summary
+./oc-analytics sessions --limit 30
+./oc-analytics session <session-id> --agent <agent-id>
+./oc-analytics cron --days 7 --jobs
+
 # Summary of all available data
 python openclaw_loader.py
 
@@ -49,10 +55,17 @@ python openclaw_loader.py --dir /path/to/.openclaw
 
 ## Data Sources
 
-| Source              | Path                            | Description             |
-| ------------------- | ------------------------------- | ----------------------- |
-| Cron run logs       | `~/.openclaw/cron/runs/*.jsonl` | Job execution telemetry |
-| Session transcripts | `~/.openclaw/sessions/*.jsonl`  | Agent conversation logs |
+| Source              | Path                                    | Description                   |
+| ------------------- | --------------------------------------- | ----------------------------- |
+| Cron run logs       | `~/.openclaw/cron/runs/*.jsonl`         | Job execution telemetry       |
+| Session transcripts | `~/.openclaw/sessions/*.jsonl`          | Agent conversation logs       |
+| Agent sessions      | `~/.openclaw/agents/*/sessions/*.jsonl` | Per-agent session transcripts |
+
+Path resolution honors:
+
+- `OPENCLAW_STATE_DIR` (preferred)
+- `CLAWDBOT_STATE_DIR` (legacy)
+- `OPENCLAW_DIR` (tool-specific fallback)
 
 ## DataFrame Schemas
 
