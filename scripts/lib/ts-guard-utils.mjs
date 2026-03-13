@@ -6,7 +6,7 @@ import ts from "typescript";
 const baseTestSuffixes = [".test.ts", ".test-utils.ts", ".test-harness.ts", ".e2e-harness.ts"];
 
 export function resolveRepoRoot(importMetaUrl) {
-  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), "..", "..");
+  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), "..");
 }
 
 export function resolveSourceRoots(repoRoot, relativeRoots) {
