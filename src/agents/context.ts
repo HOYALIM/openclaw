@@ -108,7 +108,13 @@ function getCommandPathFromArgv(argv: string[]): string[] {
   return tokens;
 }
 
-function shouldSkipEagerContextWindowWarmup(argv: string[] = process.argv): boolean {
+function shouldSkipEagerContextWindowWarmup(
+  argv: string[] = process.argv,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.OPENCLAW_CLI === "1") {
+    return true;
+  }
   const [primary, secondary] = getCommandPathFromArgv(argv);
   return primary === "config" && secondary === "validate";
 }
