@@ -184,4 +184,80 @@ r1USnb+wUdA7Zoj/mQ==
 
     expect(String(error)).toContain("tls fingerprint mismatch");
   });
+
+  test("allows slower loopback connect challenges by default", async () => {
+    const port = await getFreePort();
+    wss = new WebSocketServer({ port, host: "127.0.0.1" });
+
+    wss.on("connection", (socket) => {
+      setTimeout(() => {
+        socket.send(
+          JSON.stringify({
+            type: "event",
+            event: "connect.challenge",
+            payload: { nonce: "nonce-1", ts: Date.now() },
+          }),
+        );
+      }, 2500).unref();
+
+      socket.on("message", (data) => {
+        const first = JSON.parse(rawDataToString(data)) as { id?: string; method?: string };
+        if (first.method !== "connect") {
+          return;
+        }
+        socket.send(
+          JSON.stringify({
+            type: "res",
+            id: first.id ?? "connect",
+            ok: true,
+            payload: {
+              type: "hello-ok",
+              protocol: 2,
+              server: { version: "dev", connId: "c1" },
+              features: { methods: [], events: [] },
+              snapshot: {
+                presence: [],
+                health: {},
+                stateVersion: { presence: 1, health: 1 },
+                uptimeMs: 1,
+              },
+              policy: {
+                maxPayload: 512 * 1024,
+                maxBufferedBytes: 1024 * 1024,
+                tickIntervalMs: 30_000,
+              },
+            },
+          }),
+        );
+      });
+    });
+
+    const hello = await new Promise<{ version?: string }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        client.stop();
+        reject(new Error("timeout waiting for hello-ok"));
+      }, 6000);
+      const client = new GatewayClient({
+        url: `ws://127.0.0.1:${port}`,
+        onHelloOk: (payload) => {
+          clearTimeout(timeout);
+          client.stop();
+          resolve(payload.server ?? {});
+        },
+        onConnectError: (err) => {
+          clearTimeout(timeout);
+          client.stop();
+          reject(err);
+        },
+        onClose: (code, reason) => {
+          clearTimeout(timeout);
+          client.stop();
+          reject(new Error(`closed ${code}: ${reason}`));
+        },
+      });
+      client.start();
+    });
+
+    expect(hello.version).toBe("dev");
+  }, 8000);
 });

@@ -117,6 +117,23 @@ export function describeGatewayCloseCode(code: number): string | undefined {
   return GATEWAY_CLOSE_CODE_HINTS[code];
 }
 
+const DEFAULT_CONNECT_CHALLENGE_TIMEOUT_MS = 2_000;
+const LOOPBACK_CONNECT_CHALLENGE_TIMEOUT_MS = 5_000;
+
+function resolveConnectChallengeTimeoutMs(params: { rawTimeoutMs?: number; url?: string }): number {
+  if (typeof params.rawTimeoutMs === "number" && Number.isFinite(params.rawTimeoutMs)) {
+    return Math.max(250, Math.min(10_000, params.rawTimeoutMs));
+  }
+  const rawUrl = params.url ?? "ws://127.0.0.1:18789";
+  try {
+    return isLoopbackHost(new URL(rawUrl).hostname)
+      ? LOOPBACK_CONNECT_CHALLENGE_TIMEOUT_MS
+      : DEFAULT_CONNECT_CHALLENGE_TIMEOUT_MS;
+  } catch {
+    return DEFAULT_CONNECT_CHALLENGE_TIMEOUT_MS;
+  }
+}
+
 export class GatewayClient {
   private ws: WebSocket | null = null;
   private opts: GatewayClientOptions;
@@ -592,11 +609,10 @@ export class GatewayClient {
   private queueConnect() {
     this.connectNonce = null;
     this.connectSent = false;
-    const rawConnectDelayMs = this.opts.connectDelayMs;
-    const connectChallengeTimeoutMs =
-      typeof rawConnectDelayMs === "number" && Number.isFinite(rawConnectDelayMs)
-        ? Math.max(250, Math.min(10_000, rawConnectDelayMs))
-        : 2_000;
+    const connectChallengeTimeoutMs = resolveConnectChallengeTimeoutMs({
+      rawTimeoutMs: this.opts.connectDelayMs,
+      url: this.opts.url,
+    });
     if (this.connectTimer) {
       clearTimeout(this.connectTimer);
     }
@@ -707,3 +723,7 @@ export class GatewayClient {
     return p;
   }
 }
+
+export const __test__ = {
+  resolveConnectChallengeTimeoutMs,
+};

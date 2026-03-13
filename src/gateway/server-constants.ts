@@ -1,3 +1,5 @@
+import { isLoopbackAddress } from "./net.js";
+
 // Keep server maxPayload aligned with gateway client maxPayload so high-res canvas snapshots
 // don't get disconnected mid-invoke with "Max payload size exceeded".
 export const MAX_PAYLOAD_BYTES = 25 * 1024 * 1024;
@@ -22,12 +24,16 @@ export const __setMaxChatHistoryMessagesBytesForTest = (value?: number) => {
   }
 };
 export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 3_000;
-export const getHandshakeTimeoutMs = () => {
+export const LOOPBACK_HANDSHAKE_TIMEOUT_MS = 5_000;
+export const getHandshakeTimeoutMs = (remoteAddr?: string | null) => {
   if (process.env.VITEST && process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS) {
     const parsed = Number(process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS);
     if (Number.isFinite(parsed) && parsed > 0) {
       return parsed;
     }
+  }
+  if (remoteAddr && isLoopbackAddress(remoteAddr)) {
+    return LOOPBACK_HANDSHAKE_TIMEOUT_MS;
   }
   return DEFAULT_HANDSHAKE_TIMEOUT_MS;
 };

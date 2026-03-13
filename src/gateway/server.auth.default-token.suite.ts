@@ -93,6 +93,18 @@ export function registerDefaultAuthTokenSuite(): void {
       }
     });
 
+    test("allows slower loopback connect handshakes before timing out", async () => {
+      const ws = await openWs(port);
+      try {
+        await readConnectChallengeNonce(ws);
+        await new Promise((resolve) => setTimeout(resolve, 3_500));
+        const res = await connectReq(ws, { timeoutMs: 3_000 });
+        expect(res.ok).toBe(true);
+      } finally {
+        ws.close();
+      }
+    });
+
     test("connect (req) handshake returns hello-ok payload", async () => {
       const { STATE_DIR, createConfigIO } = await import("../config/config.js");
       const ws = await openWs(port);

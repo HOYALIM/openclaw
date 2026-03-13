@@ -100,7 +100,7 @@ vi.mock("../logger.js", async (importOriginal) => {
   };
 });
 
-const { GatewayClient } = await import("./client.js");
+const { GatewayClient, __test__ } = await import("./client.js");
 
 function getLatestWs(): MockWebSocket {
   const ws = wsInstances.at(-1);
@@ -235,6 +235,28 @@ describe("GatewayClient security checks", () => {
     expect(onConnectError).not.toHaveBeenCalled();
     expect(wsInstances.length).toBe(1);
     client.stop();
+  });
+});
+
+describe("GatewayClient connect challenge timeout selection", () => {
+  it("defaults loopback urls to a longer connect challenge timeout", () => {
+    expect(__test__.resolveConnectChallengeTimeoutMs({ url: "ws://127.0.0.1:18789" })).toBe(5_000);
+    expect(__test__.resolveConnectChallengeTimeoutMs({ url: "ws://[::1]:18789" })).toBe(5_000);
+  });
+
+  it("keeps non-loopback urls on the standard default timeout", () => {
+    expect(
+      __test__.resolveConnectChallengeTimeoutMs({ url: "wss://gateway.example.com:18789" }),
+    ).toBe(2_000);
+  });
+
+  it("preserves explicit connectDelayMs overrides", () => {
+    expect(
+      __test__.resolveConnectChallengeTimeoutMs({
+        rawTimeoutMs: 3_250,
+        url: "ws://127.0.0.1:18789",
+      }),
+    ).toBe(3_250);
   });
 });
 
