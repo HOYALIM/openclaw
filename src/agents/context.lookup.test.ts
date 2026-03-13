@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function mockContextModuleDeps(loadConfigImpl: () => unknown) {
+  const ensureOpenClawModelsJson = vi.fn(async () => {});
   vi.doMock("../config/config.js", () => ({
     loadConfig: loadConfigImpl,
   }));
   vi.doMock("./models-config.js", () => ({
-    ensureOpenClawModelsJson: vi.fn(async () => {}),
+    ensureOpenClawModelsJson,
   }));
   vi.doMock("./agent-paths.js", () => ({
     resolveOpenClawAgentDir: () => "/tmp/openclaw-agent",
@@ -16,6 +17,7 @@ function mockContextModuleDeps(loadConfigImpl: () => unknown) {
       getAll: () => [],
     })),
   }));
+  return { ensureOpenClawModelsJson };
 }
 
 // Shared mock setup used by multiple tests.
@@ -69,6 +71,40 @@ describe("lookupContextTokens", () => {
       expect(loadConfigMock).toHaveBeenCalledTimes(1);
     } finally {
       process.argv = argvSnapshot;
+    }
+  });
+
+  it("skips eager warmup in CLI processes until the first lookup", async () => {
+    const loadConfigMock = vi.fn(() => ({
+      models: {
+        providers: {
+          openrouter: {
+            models: [{ id: "openrouter/claude-sonnet", contextWindow: 321_000 }],
+          },
+        },
+      },
+    }));
+    const { ensureOpenClawModelsJson } = mockContextModuleDeps(loadConfigMock);
+
+    const argvSnapshot = process.argv;
+    const openclawCliSnapshot = process.env.OPENCLAW_CLI;
+    process.argv = ["node", "openclaw", "health"];
+    process.env.OPENCLAW_CLI = "1";
+    try {
+      const { lookupContextTokens } = await import("./context.js");
+      expect(loadConfigMock).not.toHaveBeenCalled();
+      expect(ensureOpenClawModelsJson).not.toHaveBeenCalled();
+
+      expect(lookupContextTokens("openrouter/claude-sonnet")).toBe(321_000);
+      expect(loadConfigMock).toHaveBeenCalledTimes(1);
+      expect(ensureOpenClawModelsJson).toHaveBeenCalledTimes(1);
+    } finally {
+      process.argv = argvSnapshot;
+      if (openclawCliSnapshot === undefined) {
+        delete process.env.OPENCLAW_CLI;
+      } else {
+        process.env.OPENCLAW_CLI = openclawCliSnapshot;
+      }
     }
   });
 
