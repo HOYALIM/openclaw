@@ -21,6 +21,12 @@ function writeAgentsDeleteConfig() {
   const sharedWorkspace = requireArg(process.env.SHARED_WORKSPACE, "SHARED_WORKSPACE");
   fs.mkdirSync(sharedWorkspace, { recursive: true });
   writeJson(path.join(stateDir, "openclaw.json"), {
+    gateway: {
+      auth: {
+        mode: "token",
+        token: "openclaw-e2e-agents-delete-shared-workspace-token",
+      },
+    },
     agents: {
       list: [
         { id: "main", workspace: sharedWorkspace },
